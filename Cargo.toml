@@ -3,6 +3,18 @@ name = "lutwidge"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+clap = { version = "4.4.2", default-features = false, features = ["std", "color", "help", "usage", "derive", "cargo"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
