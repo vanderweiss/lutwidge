@@ -6,7 +6,7 @@ use std::{
     process::{self, exit},
 };
 
-use clap::{arg, command, value_parser, ArgAction, Command};
+use clap::{arg, command, value_parser, Arg, ArgAction, Command};
 
 /// Validates $HOME directory and locates/creates .cache/lutwig.
 fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
@@ -58,6 +58,50 @@ fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
 }
 
 fn main() {
+    let command = Command::new("lw")
+        .author("vanderweiss, vanderweiss@proton.mail")
+        .version("1.0.1")
+        .about("Command-line utility for patching Black Souls' games franchise.")
+        .help_template("{name} ({version}) - {usage}")
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("patch")
+                .about("Patch an installed Black Souls' game.")
+                .arg(
+                    Arg::new("title-dir")
+                        .short('t')
+                        .long("title-dir")
+                        .value_name("DIR")
+                        .help("Sets a game title directory to patch.")
+                        .action(ArgAction::Set)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("install")
+                .about("Install a Black Souls' game")
+                .arg(
+                    Arg::new("title-name")
+                        .short('T')
+                        .long("title-name")
+                        .value_name("NAME")
+                        .help("Sets a game title to install.")
+                        .action(ArgAction::Set)
+                        .required(true),
+                ),
+        )
+        .arg(
+            Arg::new("cache-dir")
+                .short('c')
+                .long("cache-dir")
+                .value_name("DIR")
+                .help("Sets a custom cache directory.")
+                .action(ArgAction::Set)
+                .global(true),
+        );
+
+    let matches = command.get_matches();
+
     let (home, cache) = setup::<&str>(None);
 
     let mirrors: HashMap<_, [_; 1]> = HashMap::from([
