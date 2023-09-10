@@ -1,3 +1,5 @@
+![Rust Workflow Passing](https://github.com/vanderweiss/lutwidge/actions/workflows/rust.yml/badge.svg)
+
 # lutwidge
 
 `lutwidge` is a command-line utility made for patching games from the Black Souls franchise, authored by [@toro_yori_ebi](https://twitter.com/toro_yori_ebi). 
