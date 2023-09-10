@@ -23,7 +23,7 @@ fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
             }
         }
         Err(e) => {
-            println!("$HOME is not defined.");
+            println!("$HOME is not defined: {}", e);
             exit(1);
         }
     };
@@ -56,6 +56,10 @@ fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
 
     (home, cache)
 }
+
+//fn install() {}
+//fn patch() {}
+//fn library() {}
 
 fn main() {
     let command = Command::new("lw")
