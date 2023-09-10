@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
-    env::{self, VarError},
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::{self, exit},
 };
 
-use clap::{arg, command, value_parser, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command};
 
 /// Validates $HOME directory and locates/creates .cache/lutwig.
 fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
@@ -57,8 +56,50 @@ fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
     (home, cache)
 }
 
-//fn install() {}
-//fn patch() {}
+fn patch<P: AsRef<Path>>(cache: PathBuf, _path: P) {
+    let mirrors = ["https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip"];
+
+    let audio_override = ["BGM", "BGS", "ME", "SE"];
+
+    let graphics_override = [
+        "Animations",
+        "Battlebacks1",
+        "Battlebacks2",
+        "Battlers",
+        "Characters",
+        "Faces",
+        "Parallaxes",
+        "System",
+        "Tilesets",
+        "Titles1",
+        "Titles2",
+    ];
+
+    let path = _path.as_ref();
+
+    for mirror in mirrors.iter() {}
+
+    if path.is_dir() {
+    } else {
+        println!("{} supplied is not a directory.", path.display())
+    }
+}
+
+fn install<P: AsRef<Path>>(_path: P, title: &'static str) {
+    let mirrors: HashMap<_, [_; 1]> = HashMap::from([
+        (
+            "blacksouls", [
+                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RJ237469%20-%20Black%20Souls%20II.7z"   
+            ],
+        ),
+        (
+            "blacksouls2", [
+                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RE251629%20-%20BLACK%20SOULS.7z"
+            ],
+        ),
+    ]);
+}
+
 //fn library() {}
 
 fn main() {
@@ -104,38 +145,13 @@ fn main() {
                 .global(true),
         );
 
-    let matches = command.get_matches();
+    let _matches = command.get_matches();
 
     let (home, cache) = setup::<&str>(None);
 
-    let mirrors: HashMap<_, [_; 1]> = HashMap::from([
-        (
-            "blacksouls", [
-                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RJ237469%20-%20Black%20Souls%20II.7z"   
-            ],
-        ),
-        (
-            "blacksouls2", [
-                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RE251629%20-%20BLACK%20SOULS.7z"
-            ],
-        ),
-    ]);
-
-    let vx_mirrors = ["https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip"];
-
-    let audio_override = ["BGM", "BGS", "ME", "SE"];
-
-    let graphics_override = [
-        "Animations",
-        "Battlebacks1",
-        "Battlebacks2",
-        "Battlers",
-        "Characters",
-        "Faces",
-        "Parallaxes",
-        "System",
-        "Tilesets",
-        "Titles1",
-        "Titles2",
-    ];
+    match _matches.subcommand() {
+        Some(("patch", matches)) => {}
+        Some(("install", matches)) => {}
+        _ => {}
+    };
 }
