@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
     process::{self, exit},
@@ -86,18 +85,7 @@ fn patch<P: AsRef<Path>>(cache: PathBuf, _path: P) {
 }
 
 fn install<P: AsRef<Path>>(_path: P, title: &'static str) {
-    let mirrors: HashMap<_, [_; 1]> = HashMap::from([
-        (
-            "blacksouls", [
-                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RJ237469%20-%20Black%20Souls%20II.7z"   
-            ],
-        ),
-        (
-            "blacksouls2", [
-                "https://bafybeif3iffn6g2m2clvhr7ywqh4o7nvtjife2ry5s3azyvxplkftgnbem.ipfs.dweb.link/DL/RE251629%20-%20BLACK%20SOULS.7z"
-            ],
-        ),
-    ]);
+    let path = _path.as_ref();
 }
 
 //fn library() {}
@@ -124,7 +112,7 @@ fn main() {
         )
         .subcommand(
             Command::new("install")
-                .about("Install a Black Souls' game")
+                .about("Install a Black Souls' game on your Steam library.")
                 .arg(
                     Arg::new("title-name")
                         .short('T')
