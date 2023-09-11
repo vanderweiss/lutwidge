@@ -1,66 +1,80 @@
 use std::{
-    env, fs,
+    error::Error,
+    fmt::{self, Display},
+    fs,
+    io::{self, Write},
     path::{Path, PathBuf},
-    process::{self, exit},
+    process::exit,
 };
 
-use clap::{Arg, ArgAction, Command};
+use clap::{Parser, Subcommand};
+use dirs;
+use reqwest;
 
-/// Validates $HOME directory and locates/creates .cache/lutwig.
-fn setup<P: AsRef<Path>>(cache_local: Option<P>) -> (PathBuf, PathBuf) {
-    assert_eq!(env::consts::OS, "linux", "Target system is not Linux.");
+/// Error enum for anything that doesn't handle their own.
+#[derive(Clone, Copy, Debug)]
+enum LutwigError {
+    InvalidCache,
+    InvalidHome,
+    InvalidPatchTarget,
+    InvalidInstallTarget,
+}
 
-    let home: PathBuf = match env::var("HOME") {
-        Ok(_path) => {
-            let path = Path::new(_path.as_str());
-            if path.exists() && path.is_dir() {
-                path.to_path_buf()
-            } else {
-                println!("$HOME points to an invalid location.");
-                exit(1);
+impl Display for LutwigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                LutwigError::InvalidCache => "Cache path is invalid.",
+                LutwigError::InvalidHome => "Home path set is invalid.",
+                LutwigError::InvalidPatchTarget => "Patch target directory is invalid.",
+                LutwigError::InvalidInstallTarget => "Install target directory is invalid.",
             }
-        }
-        Err(e) => {
-            println!("$HOME is not defined: {}", e);
-            exit(1);
-        }
-    };
+        )
+    }
+}
 
-    let cache: PathBuf = {
-        let _cache = {
-            if let Some(_path) = cache_local {
-                let path = _path.as_ref().to_path_buf();
-                if path.exists() && path.is_dir() && path.is_absolute() {
-                    path
-                } else {
-                    println!("Supplied custom cache path is not valid.");
-                    exit(1);
-                }
-            } else {
-                home.join(".cache")
-            }
-        };
-        _cache.join("lutwig")
+impl Error for LutwigError {}
+
+/// Locates and creates .cache/lutwig if it doesn't exist.
+fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
+    let cache = {
+        if let Some(_cache) = cache_local.or(dirs::cache_dir()) {
+            _cache.join("lutwig")
+        } else {
+            return Err(Box::new(LutwigError::InvalidHome));
+        }
     };
 
     if !cache.exists() {
-        match fs::create_dir(&cache) {
-            Err(_) => {
-                println!("Failed creating cache directory: {}", cache.display());
+        match fs::create_dir_all(&cache) {
+            Ok(_) => {
+                if let Some(home) = dirs::home_dir() {
+                    let meta = home.join(".lwcache");
+                    let mut file = fs::File::create(&meta)?;
+                    file.write(meta.into_os_string().into_string().unwrap().as_bytes())?;
+                } else {
+                    return Err(Box::new(LutwigError::InvalidCache));
+                }
             }
-            _ => {}
+            Err(e) => return Err(Box::new(e)),
         }
     };
 
-    (home, cache)
+    Ok(cache)
 }
 
-fn patch<P: AsRef<Path>>(cache: PathBuf, _path: P) {
-    let mirrors = ["https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip"];
+fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
+    if !path.is_dir() {
+        return Err(Box::new(LutwigError::InvalidPatchTarget));
+    }
 
-    let audio_override = ["BGM", "BGS", "ME", "SE"];
+    static MIRROR: &str = "https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip";
 
-    let graphics_override = [
+    let audio_patch = ["BGM", "BGS", "ME", "SE"];
+
+    let graphics_patch = [
         "Animations",
         "Battlebacks1",
         "Battlebacks2",
@@ -74,72 +88,71 @@ fn patch<P: AsRef<Path>>(cache: PathBuf, _path: P) {
         "Titles2",
     ];
 
-    let path = _path.as_ref();
-
-    for mirror in mirrors.iter() {}
-
-    if path.is_dir() {
-    } else {
-        println!("{} supplied is not a directory.", path.display())
+    match reqwest::blocking::get(MIRROR) {
+        Ok(mut resp) => {
+            if resp.status().is_success() {
+                let lib = cache.join("vxacerpt");
+                match fs::File::create(lib) {
+                    Ok(mut file) => {
+                        io::copy(&mut resp, &mut file).unwrap();
+                    }
+                    Err(e) => {
+                        println!("Patching data failed to be created locally: {}", e);
+                        exit(1);
+                    }
+                }
+            }
+        }
+        Err(e) => return Err(Box::new(e)),
     }
+
+    Ok(())
 }
 
-fn install<P: AsRef<Path>>(_path: P, title: &'static str) {
-    let path = _path.as_ref();
+fn install(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
+    if !path.is_dir() {
+        return Err(Box::new(LutwigError::InvalidInstallTarget));
+    }
+
+    Ok(())
 }
 
 //fn library() {}
 
-fn main() {
-    let command = Command::new("lw")
-        .author("vanderweiss, vanderweiss@proton.mail")
-        .version("1.0.1")
-        .about("Command-line utility for patching Black Souls' games franchise.")
-        .help_template("{name} ({version}) - {usage}")
-        .arg_required_else_help(true)
-        .subcommand(
-            Command::new("patch")
-                .about("Patch an installed Black Souls' game.")
-                .arg(
-                    Arg::new("title-dir")
-                        .short('t')
-                        .long("title-dir")
-                        .value_name("DIR")
-                        .help("Sets a game title directory to patch.")
-                        .action(ArgAction::Set)
-                        .required(true),
-                ),
-        )
-        .subcommand(
-            Command::new("install")
-                .about("Install a Black Souls' game on your Steam library.")
-                .arg(
-                    Arg::new("title-name")
-                        .short('T')
-                        .long("title-name")
-                        .value_name("NAME")
-                        .help("Sets a game title to install.")
-                        .action(ArgAction::Set)
-                        .required(true),
-                ),
-        )
-        .arg(
-            Arg::new("cache-dir")
-                .short('c')
-                .long("cache-dir")
-                .value_name("DIR")
-                .help("Sets a custom cache directory.")
-                .action(ArgAction::Set)
-                .global(true),
-        );
+#[derive(Subcommand)]
+enum Commands {
+    Patch {
+        #[arg(short, long, value_name = "DIR")]
+        patch_target: PathBuf,
+    },
+    Install {
+        #[arg(short, long, value_name = "DIR")]
+        install_target: PathBuf,
+    },
+}
 
-    let _matches = command.get_matches();
+#[derive(Parser)]
+#[command(author, version, about)]
+struct Cli {
+    #[arg(short, long, value_name = "DIR", global = true)]
+    cache: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    let (home, cache) = setup::<&str>(None);
+fn main() -> Result<(), Box<dyn Error>> {
+    let cli = Cli::parse();
 
-    match _matches.subcommand() {
-        Some(("patch", matches)) => {}
-        Some(("install", matches)) => {}
-        _ => {}
+    let cache = setup(cli.cache)?;
+
+    match cli.command {
+        Commands::Patch { patch_target } => {
+            patch(cache, patch_target)?;
+        }
+        Commands::Install { install_target } => {
+            install(cache, install_target)?;
+        }
     };
+
+    Ok(())
 }
