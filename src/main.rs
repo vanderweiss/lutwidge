@@ -1,10 +1,12 @@
+#![allow(unused)]
+
 use std::{
     error::Error,
     fmt::{self, Display},
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::exit,
+    process::Command,
 };
 
 use clap::{Parser, Subcommand};
@@ -17,6 +19,7 @@ enum LutwigError {
     InvalidCache,
     InvalidHome,
     InvalidPatchTarget,
+    InvalidMirrorRequest,
     InvalidInstallTarget,
 }
 
@@ -29,6 +32,7 @@ impl Display for LutwigError {
                 LutwigError::InvalidCache => "Cache path is invalid.",
                 LutwigError::InvalidHome => "Home path set is invalid.",
                 LutwigError::InvalidPatchTarget => "Patch target directory is invalid.",
+                LutwigError::InvalidMirrorRequest => "Mirror requested is not operational. Try again later or file an issue if it persists.",
                 LutwigError::InvalidInstallTarget => "Install target directory is invalid.",
             }
         )
@@ -65,50 +69,71 @@ fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
     Ok(cache)
 }
 
+/// Merges assets and dependencies from the library with the target game directory.
 fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
     if !path.is_dir() {
         return Err(Box::new(LutwigError::InvalidPatchTarget));
     }
 
-    static MIRROR: &str = "https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip";
+    static MIRROR: &str = "http://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip";
 
-    let audio_patch = ["BGM", "BGS", "ME", "SE"];
+    let audio_patch = ["Audio/BGM", "Audio/BGS", "Audio/ME", "Audio/SE"];
 
     let graphics_patch = [
-        "Animations",
-        "Battlebacks1",
-        "Battlebacks2",
-        "Battlers",
-        "Characters",
-        "Faces",
-        "Parallaxes",
-        "System",
-        "Tilesets",
-        "Titles1",
-        "Titles2",
+        "Graphics/Animations",
+        "Graphics/Battlebacks1",
+        "Graphics/Battlebacks2",
+        "Graphics/Battlers",
+        "Graphics/Characters",
+        "Graphics/Faces",
+        "Graphics/Parallaxes",
+        "Graphics/System",
+        "Graphics/Tilesets",
+        "Graphics/Titles1",
+        "Graphics/Titles2",
     ];
 
-    match reqwest::blocking::get(MIRROR) {
-        Ok(mut resp) => {
-            if resp.status().is_success() {
-                let lib = cache.join("vxacerpt");
-                match fs::File::create(lib) {
-                    Ok(mut file) => {
-                        io::copy(&mut resp, &mut file).unwrap();
-                    }
-                    Err(e) => {
-                        println!("Patching data failed to be created locally: {}", e);
-                        exit(1);
-                    }
-                }
-            }
+    let vxlib = cache.join("vxacerpt");
+    let vxlib_7z = vxlib.with_extension("7z");
+
+    println!("Download starting...");
+
+    if !vxlib_7z.exists() && !vxlib.exists() {
+        let mut resp = reqwest::blocking::get(MIRROR)?;
+        if resp.status().is_success() {
+            let mut file = fs::File::create(&vxlib_7z)?;
+            io::copy(&mut resp, &mut file)?;
+            println!("Download complete!")
+        } else {
+            return Err(Box::new(LutwigError::InvalidMirrorRequest));
         }
-        Err(e) => return Err(Box::new(e)),
+    } else {
+        println!("Previous download found!")
+    }
+
+    println!("Unpacking download...");
+
+    if !vxlib.exists() {
+        Command::new("7z")
+            .arg("e")
+            .arg(&vxlib_7z.as_os_str())
+            .arg("-y")
+            .arg(format!("-o{}", vxlib.display()))
+            .spawn()?;
+        println!("Unpacked download!");
+    } else {
+        println!("Download already unpacked!");
+    }
+
+    for _patch in audio_patch.iter() {
+        let patch = vxlib.join(_patch);
+        for entry in fs::read_dir(patch)? {}
     }
 
     Ok(())
 }
 
+/// Locates your Steam path and adds the target game directory into your library.
 fn install(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
     if !path.is_dir() {
         return Err(Box::new(LutwigError::InvalidInstallTarget));
@@ -128,6 +153,10 @@ enum Commands {
     Install {
         #[arg(short, long, value_name = "DIR")]
         install_target: PathBuf,
+    },
+    Uninstall {
+        #[arg(short, long, value_name = "NAME")]
+        uninstall_target: String,
     },
 }
 
@@ -152,6 +181,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Commands::Install { install_target } => {
             install(cache, install_target)?;
         }
+        Commands::Uninstall { uninstall_target } => {}
     };
 
     Ok(())
