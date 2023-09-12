@@ -75,7 +75,7 @@ fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
         return Err(Box::new(LutwigError::InvalidPatchTarget));
     }
 
-    static MIRROR: &str = "http://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip";
+    static MIRROR: &str = "https://archive.org/download/vxacertp.tar/vxacertp.tar.gz";
 
     let audio_patch = ["Audio/BGM", "Audio/BGS", "Audio/ME", "Audio/SE"];
 
@@ -93,15 +93,15 @@ fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
         "Graphics/Titles2",
     ];
 
-    let vxlib = cache.join("vxacerpt");
-    let vxlib_7z = vxlib.with_extension("7z");
+    let vxlib = cache.join("vxacertp");
+    let vxlib_tar = vxlib.with_extension("tar.gz");
 
     println!("Download starting...");
 
-    if !vxlib_7z.exists() && !vxlib.exists() {
+    if !vxlib_tar.exists() && !vxlib.exists() {
         let mut resp = reqwest::blocking::get(MIRROR)?;
         if resp.status().is_success() {
-            let mut file = fs::File::create(&vxlib_7z)?;
+            let mut file = fs::File::create(&vxlib_tar)?;
             io::copy(&mut resp, &mut file)?;
             println!("Download complete!")
         } else {
@@ -114,11 +114,11 @@ fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
     println!("Unpacking download...");
 
     if !vxlib.exists() {
-        Command::new("7z")
-            .arg("e")
-            .arg(&vxlib_7z.as_os_str())
-            .arg("-y")
-            .arg(format!("-o{}", vxlib.display()))
+        Command::new("tar")
+            .arg("-xzf")
+            .arg(vxlib_tar.as_os_str())
+            .arg("--directory")
+            .arg(cache.as_os_str())
             .spawn()?;
         println!("Unpacked download!");
     } else {
