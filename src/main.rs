@@ -11,6 +11,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dirs;
+use fs_extra;
 use reqwest;
 
 /// Error enum for anything that doesn't handle their own.
@@ -39,7 +40,14 @@ impl Display for LutwigError {
     }
 }
 
-impl Error for LutwigError {}
+/// mmmm maybe later wrap
+impl Error for LutwigError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            _ => None,
+        }
+    }
+}
 
 /// Locates and creates .cache/lutwig if it doesn't exist.
 fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
@@ -70,16 +78,19 @@ fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
 }
 
 /// Merges assets and dependencies from the library with the target game directory.
-fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
-    if !path.is_dir() {
+fn patch(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
+    if !target.is_dir() {
         return Err(Box::new(LutwigError::InvalidPatchTarget));
     }
 
     static MIRROR: &str = "https://archive.org/download/vxacertp.tar/vxacertp.tar.gz";
 
-    let audio_patch = ["Audio/BGM", "Audio/BGS", "Audio/ME", "Audio/SE"];
-
-    let graphics_patch = [
+    let patches = [
+        "Audio/BGM",
+        "Audio/BGS",
+        "Audio/ME",
+        "Audio/SE",
+        "Fonts",
         "Graphics/Animations",
         "Graphics/Battlebacks1",
         "Graphics/Battlebacks2",
@@ -93,7 +104,7 @@ fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
         "Graphics/Titles2",
     ];
 
-    let vxlib = cache.join("vxacertp");
+    let vxlib = cache.join("vxacertp/RPGVXAce");
     let vxlib_tar = vxlib.with_extension("tar.gz");
 
     println!("Download starting...");
@@ -125,39 +136,50 @@ fn patch(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
         println!("Download already unpacked!");
     }
 
-    for _patch in audio_patch.iter() {
-        let patch = vxlib.join(_patch);
-        for entry in fs::read_dir(patch)? {}
+    println!("Applying patches...");
+
+    for patch in patches.iter() {
+        let patch_lib = vxlib.join(patch);
+        let patch_target = target.join(patch);
+
+        if !patch_target.exists() {
+            fs::create_dir_all(&patch_target)?;
+        }
+
+        let entries: Vec<PathBuf> = fs::read_dir(patch_lib)?
+            .filter_map(|entry| entry.ok().and_then(|e| Some(e.path())))
+            .collect();
+
+        fs_extra::copy_items(
+            entries.as_slice(),
+            &patch_target,
+            &fs_extra::dir::CopyOptions::default(),
+        );
+
+        println!("{}", patch_target.display());
     }
+
+    println!("Patches applied successfully.");
 
     Ok(())
 }
 
 /// Locates your Steam path and adds the target game directory into your library.
-fn install(cache: PathBuf, path: PathBuf) -> Result<(), Box<dyn Error>> {
-    if !path.is_dir() {
+fn install(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
+    if !target.is_dir() {
         return Err(Box::new(LutwigError::InvalidInstallTarget));
     }
 
     Ok(())
 }
 
-//fn library() {}
+//fn uninstall() {}
 
 #[derive(Subcommand)]
 enum Commands {
-    Patch {
-        #[arg(short, long, value_name = "DIR")]
-        patch_target: PathBuf,
-    },
-    Install {
-        #[arg(short, long, value_name = "DIR")]
-        install_target: PathBuf,
-    },
-    Uninstall {
-        #[arg(short, long, value_name = "NAME")]
-        uninstall_target: String,
-    },
+    Patch { patch_target: PathBuf },
+    Install { install_target: PathBuf },
+    Uninstall { uninstall_target: String },
 }
 
 #[derive(Parser)]
@@ -165,6 +187,8 @@ enum Commands {
 struct Cli {
     #[arg(short, long, value_name = "DIR", global = true)]
     cache: Option<PathBuf>,
+    #[arg(short, long, global = true)]
+    cleanup: Option<bool>,
     #[command(subcommand)]
     command: Commands,
 }

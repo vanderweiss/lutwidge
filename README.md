@@ -18,5 +18,4 @@ game with the dependencies themselves altogether, and merging them into a single
 In theory, however, it should work for any game built on top of RPG Maker VX Ace.
 
 ## Dependencies
-- un/zip 
-- p7zip
+- tar 
