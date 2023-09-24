@@ -18,4 +18,16 @@ game with the dependencies themselves altogether, and merging them into a single
 In theory, however, it should work for any game built on top of RPG Maker VX Ace.
 
 ## Dependencies
-- tar 
+- tar
+
+## Usage
+For patching:
+```bash
+lutwig patch /tmp/blacksouls
+```
+
+## Checklist: 
+- [x] patching game files, functional
+- [ ] mirror selection
+- [ ] steam integration
+- [ ] overhaul cli
