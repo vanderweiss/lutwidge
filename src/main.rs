@@ -48,15 +48,28 @@ type Result<T> = result::Result<T, LwError>;
 /// Locates and creates .cache/lutwig if it doesn't exist.
 fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf> {
     let home = dirs::home_dir().expect("Home directory is not set up correctly.");
-    let cache = cache_local.unwrap_or(home.join(".cache/lutwig"));
-
-    if !cache.exists() {
-        fs::create_dir_all(&cache)?;
-    }
-
     let meta = home.join(".lwcache");
-    let mut handler = fs::File::create(&meta)?;
-    handler.write(meta.into_os_string().into_string().unwrap().as_bytes());
+
+    let cache = {
+        if !meta.exists() {
+            let cache = cache_local.or(dirs::cache_dir()).unwrap().join("lutwig");
+            if !cache.exists() {
+                fs::create_dir_all(&cache);
+            }
+            let mut handler = fs::File::create(&meta)?;
+            handler.write(
+                &cache
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap()
+                    .as_bytes(),
+            );
+            cache
+        } else {
+            PathBuf::from(fs::read_to_string(&meta)?)
+        }
+    };
 
     Ok(cache)
 }
@@ -173,7 +186,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Patch { patch_target } => {
-            patch(cache, patch_target);
+            patch(cache, patch_target)?;
         }
         Commands::Install { install_target } => {
             install(cache, install_target)?;
