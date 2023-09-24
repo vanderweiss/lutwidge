@@ -21,7 +21,6 @@ In theory, however, it should work for any game built on top of RPG Maker VX Ace
 - tar
 
 ## Usage
-For patching:
 ```bash
 lutwig patch /tmp/blacksouls
 ```
