@@ -7,6 +7,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
+    result,
 };
 
 use clap::{Parser, Subcommand};
@@ -14,78 +15,57 @@ use dirs;
 use fs_extra;
 use reqwest;
 
-/// Error enum for anything that doesn't handle their own.
-#[derive(Clone, Copy, Debug)]
-enum LutwigError {
-    InvalidCache,
-    InvalidHome,
-    InvalidPatchTarget,
-    InvalidMirrorRequest,
-    InvalidInstallTarget,
+// Custom error for nicer outputs
+#[derive(Debug)]
+enum LwError {
+    Io(io::Error),
+    Mirror(reqwest::Error),
 }
 
-impl Display for LutwigError {
+impl Display for LwError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                LutwigError::InvalidCache => "Cache path is invalid.",
-                LutwigError::InvalidHome => "Home path set is invalid.",
-                LutwigError::InvalidPatchTarget => "Patch target directory is invalid.",
-                LutwigError::InvalidMirrorRequest => "Mirror requested is not operational. Try again later or file an issue if it persists.",
-                LutwigError::InvalidInstallTarget => "Install target directory is invalid.",
-            }
-        )
-    }
-}
-
-/// mmmm maybe later wrap
-impl Error for LutwigError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            _ => None,
+            LwError::Io(ref err) => writeln!(f, "IO error: {}", err),
+            LwError::Mirror(ref err) => writeln!(f, "Mirror request error: {}", err),
         }
     }
 }
+
+impl From<io::Error> for LwError {
+    fn from(error: io::Error) -> Self {
+        LwError::Io(error)
+    }
+}
+
+impl From<reqwest::Error> for LwError {
+    fn from(error: reqwest::Error) -> Self {
+        LwError::Mirror(error)
+    }
+}
+
+type Result<T> = result::Result<T, LwError>;
 
 /// Locates and creates .cache/lutwig if it doesn't exist.
-fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
-    let cache = {
-        if let Some(_cache) = cache_local.or(dirs::cache_dir()) {
-            _cache.join("lutwig")
-        } else {
-            return Err(Box::new(LutwigError::InvalidHome));
-        }
-    };
+fn setup(cache_local: Option<PathBuf>) -> Result<PathBuf> {
+    let home = dirs::home_dir().expect("Home directory is not set up correctly.");
+    let cache = cache_local.unwrap_or(home.join(".cache/lutwig"));
 
     if !cache.exists() {
-        match fs::create_dir_all(&cache) {
-            Ok(_) => {
-                if let Some(home) = dirs::home_dir() {
-                    let meta = home.join(".lwcache");
-                    let mut file = fs::File::create(&meta)?;
-                    file.write(meta.into_os_string().into_string().unwrap().as_bytes())?;
-                } else {
-                    return Err(Box::new(LutwigError::InvalidCache));
-                }
-            }
-            Err(e) => return Err(Box::new(e)),
-        }
-    };
+        fs::create_dir_all(&cache)?;
+    }
+
+    let meta = home.join(".lwcache");
+    let mut handler = fs::File::create(&meta)?;
+    handler.write(meta.into_os_string().into_string().unwrap().as_bytes());
 
     Ok(cache)
 }
 
 /// Merges assets and dependencies from the library with the target game directory.
-fn patch(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
-    if !target.is_dir() {
-        return Err(Box::new(LutwigError::InvalidPatchTarget));
-    }
+fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
+    const MIRROR: &str = "https://archive.org/download/vxacertp.tar/vxacertp.tar.gz";
 
-    static MIRROR: &str = "https://archive.org/download/vxacertp.tar/vxacertp.tar.gz";
-
-    let patches = [
+    const PATCHES: [&str; 16] = [
         "Audio/BGM",
         "Audio/BGS",
         "Audio/ME",
@@ -104,42 +84,32 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
         "Graphics/Titles2",
     ];
 
-    let vxlib = cache.join("vxacertp/RPGVXAce");
-    let vxlib_tar = vxlib.with_extension("tar.gz");
+    let vx = cache.join("vxacertp/RPGVXAce");
+    let vxt = vx.with_extension("tar.gz");
 
-    println!("Download starting...");
+    println!("- [1/3] Download starting...");
 
-    if !vxlib_tar.exists() && !vxlib.exists() {
+    if !vxt.exists() {
         let mut resp = reqwest::blocking::get(MIRROR)?;
-        if resp.status().is_success() {
-            let mut file = fs::File::create(&vxlib_tar)?;
-            io::copy(&mut resp, &mut file)?;
-            println!("Download complete!")
-        } else {
-            return Err(Box::new(LutwigError::InvalidMirrorRequest));
-        }
-    } else {
-        println!("Previous download found!")
+        let mut handler = fs::File::create(&vxt)?;
+        io::copy(&mut resp, &mut handler)?;
     }
 
-    println!("Unpacking download...");
+    println!("- [2/3] Unpacking download...");
 
-    if !vxlib.exists() {
+    if !vx.exists() {
         Command::new("tar")
             .arg("-xzf")
-            .arg(vxlib_tar.as_os_str())
+            .arg(vxt.as_os_str())
             .arg("--directory")
             .arg(cache.as_os_str())
             .spawn()?;
-        println!("Unpacked download!");
-    } else {
-        println!("Download already unpacked!");
     }
 
-    println!("Applying patches...");
+    println!("- [3/3] Applying patches...");
 
-    for patch in patches.iter() {
-        let patch_lib = vxlib.join(patch);
+    for patch in PATCHES.iter() {
+        let patch_lib = vx.join(patch);
         let patch_target = target.join(patch);
 
         if !patch_target.exists() {
@@ -159,17 +129,13 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
         println!("{}", patch_target.display());
     }
 
-    println!("Patches applied successfully.");
+    println!("- DONE!");
 
     Ok(())
 }
 
 /// Locates your Steam path and adds the target game directory into your library.
-fn install(cache: PathBuf, target: PathBuf) -> Result<(), Box<dyn Error>> {
-    if !target.is_dir() {
-        return Err(Box::new(LutwigError::InvalidInstallTarget));
-    }
-
+fn install(cache: PathBuf, target: PathBuf) -> Result<()> {
     Ok(())
 }
 
@@ -185,7 +151,8 @@ enum Commands {
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
-    #[arg(short, long, value_name = "DIR", global = true)]
+    #[arg(short = 'C')]
+    #[arg(long, value_name = "DIR", global = true)]
     cache: Option<PathBuf>,
     #[arg(short, long, global = true)]
     cleanup: Option<bool>,
@@ -193,14 +160,14 @@ struct Cli {
     command: Commands,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let cache = setup(cli.cache)?;
 
     match cli.command {
         Commands::Patch { patch_target } => {
-            patch(cache, patch_target)?;
+            patch(cache, patch_target);
         }
         Commands::Install { install_target } => {
             install(cache, install_target)?;
