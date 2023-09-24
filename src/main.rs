@@ -87,7 +87,7 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
     let vx = cache.join("vxacertp/RPGVXAce");
     let vxt = vx.with_extension("tar.gz");
 
-    println!("- [1/3] Download starting...");
+    println!("[1/3] Downloading assets...");
 
     if !vxt.exists() {
         let mut resp = reqwest::blocking::get(MIRROR)?;
@@ -95,7 +95,7 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
         io::copy(&mut resp, &mut handler)?;
     }
 
-    println!("- [2/3] Unpacking download...");
+    println!("[2/3] Extracting download...");
 
     if !vx.exists() {
         Command::new("tar")
@@ -106,7 +106,7 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
             .spawn()?;
     }
 
-    println!("- [3/3] Applying patches...");
+    println!("[3/3] Applying patches...");
 
     for patch in PATCHES.iter() {
         let patch_lib = vx.join(patch);
@@ -116,7 +116,7 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
             fs::create_dir_all(&patch_target)?;
         }
 
-        let entries: Vec<PathBuf> = fs::read_dir(patch_lib)?
+        let entries: Vec<PathBuf> = fs::read_dir(&patch_lib)?
             .filter_map(|entry| entry.ok().and_then(|e| Some(e.path())))
             .collect();
 
@@ -126,10 +126,14 @@ fn patch(cache: PathBuf, target: PathBuf) -> Result<()> {
             &fs_extra::dir::CopyOptions::default(),
         );
 
-        println!("{}", patch_target.display());
+        println!(
+            "- {} -> {}",
+            patch_lib.file_name().unwrap().to_str().unwrap(),
+            patch_target.display()
+        );
     }
 
-    println!("- DONE!");
+    println!("!DONE!");
 
     Ok(())
 }
@@ -139,7 +143,10 @@ fn install(cache: PathBuf, target: PathBuf) -> Result<()> {
     Ok(())
 }
 
-//fn uninstall() {}
+/// Matches target string to game directory to remove from library.
+fn uninstall(cache: PathBuf, target: String) -> Result<()> {
+    Ok(())
+}
 
 #[derive(Subcommand)]
 enum Commands {
@@ -151,10 +158,9 @@ enum Commands {
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
-    #[arg(short = 'C')]
-    #[arg(long, value_name = "DIR", global = true)]
+    #[arg(short = 'c', long, value_name = "DIR", global = true)]
     cache: Option<PathBuf>,
-    #[arg(short, long, global = true)]
+    #[arg(short = 'C', long, global = true)]
     cleanup: Option<bool>,
     #[command(subcommand)]
     command: Commands,
